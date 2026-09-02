@@ -9,6 +9,8 @@ Open **SQL Editor** and run `supabase/schema.sql`.
 
 If that script reports an error around the roster RLS policy, that is expected from the first draft of the schema. Then run `supabase/complete.sql`; it replaces the policies safely and enables Realtime.
 
+For the Guillotine FAAB workflow, also run `supabase/waiver_fix.sql` after `weekly.sql`. This hardens one-active-bid-per-player behavior and makes waiver awards deterministic when a manager bids on multiple players.
+
 ## 2. Get the public anon key
 In Supabase, open **Project Settings → API**. Copy the **anon / publishable public key**. Do NOT copy the `service_role` or secret key.
 
@@ -20,7 +22,21 @@ In Supabase, open **Authentication → Providers** and enable Email/password. Ma
 ## 4. GitHub Pages
 The repository contains `index.html`. Enable GitHub Pages for the `main` branch under the repository's **Settings → Pages**. GitHub will provide the public website address.
 
-## 5. Important
-The current `index.html` is the working prototype UI. The database schema is prepared for the full shared version, including teams, rosters, lineups, draft picks, private waiver bids, weekly scores, eliminations, player metadata, NFL stats, audit logging, and Realtime.
+## 5. Weekly Guillotine workflow
+The commissioner workflow is intentionally staged:
 
-The production live-data layer still needs to be wired to the Supabase tables and a scheduled stats/player-data job. Do not expose any Supabase secret/service-role key in GitHub Pages.
+1. Lock completed-week lineups.
+2. Sync final NFL stats and calculate surviving-team scores.
+3. Review the lowest-scoring surviving team and explicitly confirm elimination.
+4. The eliminated team's entire roster enters the waiver pool.
+5. Managers submit blind FAAB bids.
+6. Commissioner processes waivers; highest valid bid wins, with priority and submission time resolving ties.
+7. Winning bid amounts are deducted from FAAB and players are added to the winning team's bench.
+8. Commissioner advances the league to the next week.
+
+The elimination confirmation is irreversible by design.
+
+## 6. Important
+The database schema is prepared for the full shared version, including teams, rosters, lineups, draft picks, private waiver bids, weekly scores, eliminations, player metadata, NFL stats, audit logging, and Realtime.
+
+Do not expose any Supabase secret/service-role key in GitHub Pages.
