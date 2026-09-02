@@ -1,42 +1,45 @@
-# Guillotine League Manager — Live Setup
+# Guillotine League — Final Launch
 
-The GitHub repository is ready. The remaining connection step is to initialize the Supabase database and provide the browser-safe Supabase `anon` key.
+The app is built for the 18-team 2026 Guillotine / Survivor league.
 
-## 1. Open your Supabase project
-Project: https://unmahnndjtljktvrupkh.supabase.co/
+## What is ready
 
-Open **SQL Editor** and run `supabase/schema.sql`.
+- 18 teams
+- Manager-specific join links and manager portal
+- 17-week Guillotine format
+- Lowest surviving score eliminated each week
+- Eliminated roster released to the blind FAAB waiver pool
+- $100 starting FAAB
+- No trades
+- Season-long points tiebreaker
+- Week-based roster changes
+- Snake draft with 90-second pick clock
+- Draft pause/resume/reset controls
+- Manager lineup management
+- Live scores and standings
+- Commissioner weekly control center
+- Realtime league updates
 
-If that script reports an error around the roster RLS policy, that is expected from the first draft of the schema. Then run `supabase/complete.sql`; it replaces the policies safely and enables Realtime.
+## One remaining live-database activation
 
-For the Guillotine FAAB workflow, also run `supabase/waiver_fix.sql` after `weekly.sql`. This hardens one-active-bid-per-player behavior and makes waiver awards deterministic when a manager bids on multiple players.
+The browser app cannot create PostgreSQL functions by itself. The live Supabase project must execute the repository's final activation migration once.
 
-## 2. Get the public anon key
-In Supabase, open **Project Settings → API**. Copy the **anon / publishable public key**. Do NOT copy the `service_role` or secret key.
+Use **`supabase/final_activation.sql`** after the base database files are already installed. It activates the draft reset function, hardened private FAAB bidding/processing, and the final Realtime safety checks in one migration.
 
-Put that public key into `config.js` where the placeholder appears.
+This is the only remaining database activation required for the final features. Do not expose a Supabase service-role or secret key in the website.
 
-## 3. Authentication
-In Supabase, open **Authentication → Providers** and enable Email/password. Managers will use individual accounts so private FAAB bids remain private.
+## Launch order
 
-## 4. GitHub Pages
-The repository contains `index.html`. Enable GitHub Pages for the `main` branch under the repository's **Settings → Pages**. GitHub will provide the public website address.
+1. Activate `supabase/final_activation.sql` in the live Supabase project.
+2. Open Commissioner Dashboard.
+3. Open League Launch Center and verify the live league connection.
+4. Open Draft Control and confirm the draft is in Setup.
+5. Share the manager portal for league code **HO441Q**.
+6. Have all 18 managers claim their assigned teams and mark ready.
+7. Set the draft date/rounds/timer and start the draft.
+8. After the draft, managers set and lock weekly lineups.
+9. Commissioner runs the weekly workflow: lock → sync/calculate → confirm elimination → release roster → FAAB → advance.
 
-## 5. Weekly Guillotine workflow
-The commissioner workflow is intentionally staged:
+## Important
 
-1. Lock completed-week lineups.
-2. Sync final NFL stats and calculate surviving-team scores.
-3. Review the lowest-scoring surviving team and explicitly confirm elimination.
-4. The eliminated team's entire roster enters the waiver pool.
-5. Managers submit blind FAAB bids.
-6. Commissioner processes waivers; highest valid bid wins, with priority and submission time resolving ties.
-7. Winning bid amounts are deducted from FAAB and players are added to the winning team's bench.
-8. Commissioner advances the league to the next week.
-
-The elimination confirmation is irreversible by design.
-
-## 6. Important
-The database schema is prepared for the full shared version, including teams, rosters, lineups, draft picks, private waiver bids, weekly scores, eliminations, player metadata, NFL stats, audit logging, and Realtime.
-
-Do not expose any Supabase secret/service-role key in GitHub Pages.
+The app code is hosted from GitHub Pages and uses only the browser-safe Supabase publishable key. The database migration is intentionally separate because GitHub Pages cannot securely execute privileged PostgreSQL DDL.
