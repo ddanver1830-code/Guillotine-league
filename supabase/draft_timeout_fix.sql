@@ -65,7 +65,7 @@ begin
   insert into public.roster_players(league_id,team_id,sleeper_id,acquired_week,acquired_via,roster_slot) values(p_league_id,p_team_id,p_sleeper_id,1,'draft','BENCH');
   if v_ds.league_id is not null then
     if v_pick_number >= v_total then update public.draft_state set status='complete',timeout_pending=false,pick_started_at=null,remaining_seconds=0,updated_at=now() where league_id=p_league_id;
-    else update public.draft_state set status='running',timeout_pending=false,pick_started_at=now(),remaining_seconds=pick_seconds,updated_at=now(); end if;
+    else update public.draft_state set status='running',timeout_pending=false,pick_started_at=now(),remaining_seconds=pick_seconds,updated_at=now() where league_id=p_league_id; end if;
   end if;
   return v_pick;
 exception when unique_violation then raise exception 'That player or pick was just taken. Refresh the draft room.';
