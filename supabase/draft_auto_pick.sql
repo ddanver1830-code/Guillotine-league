@@ -66,8 +66,6 @@ begin
     raise exception 'Expected Team % was not found.',v_expected_team;
   end if;
 
-  -- Sleeper's search_rank is a useful deterministic proxy for the best
-  -- available player. It is already present in the synced metadata.
   select p.* into v_player
   from public.players p
   where p.sleeper_id not in (
@@ -107,6 +105,12 @@ begin
     set reason='Clock expired — automatic best-available pick';
 
   if v_pick_number >= v_total then
+    -- The final pick completes the draft, so immediately place every
+    -- remaining undrafted player into the initial waiver pool.
+    if to_regprocedure('public.populate_initial_waiver_pool(uuid)') is not null then
+      perform public.populate_initial_waiver_pool(p_league_id);
+    end if;
+
     update public.draft_state
       set status='complete',timeout_pending=false,pick_started_at=null,remaining_seconds=0,updated_at=now()
     where league_id=p_league_id;
