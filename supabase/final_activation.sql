@@ -1,6 +1,7 @@
 -- FINAL ACTIVATION FOR THE 2026 GUILLOTINE LEAGUE
 -- Run after schema.sql, complete.sql, weekly.sql, and automatic_weekly.sql.
--- This file activates draft reset and hardened FAAB processing.
+-- This file activates draft reset, hardened FAAB processing, and automatic
+-- population of all undrafted players into the initial waiver pool.
 
 -- ================================================================
 -- DRAFT RESET
@@ -20,6 +21,9 @@ begin
   if v_commissioner is null then raise exception 'League not found.'; end if;
   if v_commissioner <> v_user then raise exception 'Commissioner access required.'; end if;
 
+  -- A draft reset must remove all draft-era waiver state as well as rosters.
+  delete from public.waiver_bids where league_id=p_league_id;
+  delete from public.waiver_pool where league_id=p_league_id;
   delete from public.lineups where league_id=p_league_id;
   delete from public.roster_players where league_id=p_league_id;
   delete from public.draft_picks where league_id=p_league_id;
@@ -40,6 +44,104 @@ end;
 $reset_draft$;
 revoke all on function public.reset_draft(uuid) from public;
 grant execute on function public.reset_draft(uuid) to authenticated;
+
+-- ================================================================
+-- INITIAL WAIVER POOL
+-- ================================================================
+-- Every player not selected by this league's draft becomes available for
+-- the first blind-FAAB waiver period. This is intentionally league-scoped:
+-- a player drafted by another league is still available here unless this
+-- league itself owns that player.
+create or replace function public.populate_initial_waiver_pool(p_league_id uuid)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $initial_waivers$
+declare
+  v_user uuid := auth.uid();
+  v_count int := 0;
+  v_commissioner uuid;
+begin
+  if v_user is null then raise exception 'Authentication required.'; end if;
+
+  select commissioner_user_id
+    into v_commissioner
+  from public.leagues
+  where id=p_league_id;
+
+  if v_commissioner is null then raise exception 'League not found.'; end if;
+  if v_commissioner <> v_user then raise exception 'Commissioner access required.'; end if;
+
+  insert into public.waiver_pool(league_id,sleeper_id,source_team_id,released_week)
+  select p_league_id,p.sleeper_id,null,1
+  from public.players p
+  where not exists (
+    select 1
+    from public.roster_players rp
+    where rp.league_id=p_league_id
+      and rp.sleeper_id=p.sleeper_id
+  )
+  on conflict (league_id,sleeper_id) do nothing;
+
+  get diagnostics v_count = row_count;
+  return v_count;
+end;
+$initial_waivers$;
+revoke all on function public.populate_initial_waiver_pool(uuid) from public;
+grant execute on function public.populate_initial_waiver_pool(uuid) to authenticated;
+
+-- Seed the waiver pool whenever a draft transitions to complete. Using a
+-- trigger makes this independent of whether completion happens through the
+-- normal draft RPC, the final manual pick, or the automatic timeout picker.
+create or replace function public.seed_initial_waivers_on_draft_complete()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $seed_initial$
+begin
+  if new.status='complete' and old.status is distinct from 'complete' then
+    perform public.populate_initial_waiver_pool(new.league_id);
+  end if;
+  return new;
+end;
+$seed_initial$;
+revoke all on function public.seed_initial_waivers_on_draft_complete() from public;
+grant execute on function public.seed_initial_waivers_on_draft_complete() to authenticated;
+
+drop trigger if exists seed_initial_waivers_after_draft_complete on public.draft_state;
+create trigger seed_initial_waivers_after_draft_complete
+after update of status on public.draft_state
+for each row
+when (new.status='complete')
+execute function public.seed_initial_waivers_on_draft_complete();
+
+-- Backfill the pool for any league whose draft is already complete when this
+-- activation script is run. Safe to run repeatedly because the pool has a
+-- league/player uniqueness constraint and the function uses ON CONFLICT DO NOTHING.
+do $waiver_backfill$
+declare
+  v_league record;
+begin
+  for v_league in
+    select ds.league_id
+    from public.draft_state ds
+    where ds.status='complete'
+  loop
+    insert into public.waiver_pool(league_id,sleeper_id,source_team_id,released_week)
+    select v_league.league_id,p.sleeper_id,null,1
+    from public.players p
+    where not exists (
+      select 1
+      from public.roster_players rp
+      where rp.league_id=v_league.league_id
+        and rp.sleeper_id=p.sleeper_id
+    )
+    on conflict (league_id,sleeper_id) do nothing;
+  end loop;
+end;
+$waiver_backfill$;
 
 -- ================================================================
 -- PRIVATE / DETERMINISTIC FAAB BIDS
@@ -183,11 +285,17 @@ begin
 end;
 $realtime$;
 
--- Verify the three critical functions exist.
+-- Verify the critical activation functions exist.
 do $verify$
 begin
   if not exists(select 1 from pg_proc where pronamespace='public'::regnamespace and proname='reset_draft') then
     raise exception 'reset_draft was not created';
+  end if;
+  if not exists(select 1 from pg_proc where pronamespace='public'::regnamespace and proname='populate_initial_waiver_pool') then
+    raise exception 'populate_initial_waiver_pool was not created';
+  end if;
+  if not exists(select 1 from pg_proc where pronamespace='public'::regnamespace and proname='seed_initial_waivers_on_draft_complete') then
+    raise exception 'seed_initial_waivers_on_draft_complete was not created';
   end if;
   if not exists(select 1 from pg_proc where pronamespace='public'::regnamespace and proname='submit_waiver_bid') then
     raise exception 'submit_waiver_bid was not created';
