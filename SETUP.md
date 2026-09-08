@@ -9,6 +9,7 @@ The app is built for the 18-team 2026 Guillotine / Survivor league.
 - 17-week Guillotine format
 - Lowest surviving score eliminated each week
 - Eliminated roster released to the blind FAAB waiver pool
+- **Every undrafted player automatically enters the initial waiver pool when the draft completes**
 - $100 starting FAAB
 - No trades
 - Season-long points tiebreaker
@@ -24,9 +25,9 @@ The app is built for the 18-team 2026 Guillotine / Survivor league.
 
 The browser app cannot create PostgreSQL functions by itself. The live Supabase project must execute the repository's final activation migration once.
 
-Use **`supabase/final_activation.sql`** after the base database files are already installed. It activates the draft reset function, hardened private FAAB bidding/processing, and the final Realtime safety checks in one migration.
+Use **`supabase/final_activation.sql`** after the base database files are already installed. It activates the draft reset function, automatic initial waiver-pool population for all undrafted players, hardened private FAAB bidding/processing, and the final Realtime safety checks in one migration.
 
-This is the only remaining database activation required for the final features. Do not expose a Supabase service-role or secret key in the website.
+The activation is idempotent for the functions and waiver-pool population logic, so it can safely be rerun when needed. Do not expose a Supabase service-role or secret key in the website.
 
 ## Launch order
 
@@ -37,8 +38,11 @@ This is the only remaining database activation required for the final features. 
 5. Share the manager portal for league code **HO441Q**.
 6. Have all 18 managers claim their assigned teams and mark ready.
 7. Set the draft date/rounds/timer and start the draft.
-8. After the draft, managers set and lock weekly lineups.
-9. Commissioner runs the weekly workflow: lock → sync/calculate → confirm elimination → release roster → FAAB → advance.
+8. After the draft completes, verify that every undrafted player appears in the waiver pool.
+9. Managers submit blind FAAB bids.
+10. Commissioner processes waivers and confirms awarded players/FAAB balances.
+11. Managers set and lock weekly lineups.
+12. Commissioner runs the weekly workflow: lock → sync/calculate → confirm elimination → release roster → FAAB → advance.
 
 ## Important
 
